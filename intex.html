@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>퀴즈 놀이터</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#f7fbff}
+.container{display:flex;height:100vh}
+.sidebar{width:25%;background:#fff4b8;padding:12px;overflow:auto}
+.main{width:75%;padding:16px;overflow:auto}
+.card{background:white;border-radius:16px;padding:12px;margin:10px 0}
+button{padding:10px 16px;border:none;border-radius:12px;background:#7ec8ff;font-size:16px;cursor:pointer}
+input,textarea,select{width:100%;padding:8px;margin:4px 0}
+.rank{padding:6px;border-bottom:1px solid #ddd}
+h1,h2{color:#444}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="sidebar">
+<h2>🏆 참여 현황</h2>
+<div id="rankings"></div>
+<div class="card">
+<div id="stats"></div>
+</div>
+</div>
+
+<div class="main">
+<h1>🐰 퀴즈 놀이터</h1>
+
+<div id="creator" class="card">
+<h2>출제하기</h2>
+<input id="title" placeholder="퀴즈 제목">
+<div id="questions"></div>
+<button onclick="addQuestion()">➕ 문제 만들기</button>
+<button onclick="startQuiz()">🚀 퀴즈 시작</button>
+</div>
+
+<div id="player" class="card" style="display:none"></div>
+<div id="result" class="card" style="display:none"></div>
+</div>
+</div>
+
+<script>
+let quiz=[];
+let attempts={};
+let participants=JSON.parse(localStorage.getItem("participants")||"[]");
+
+function saveRanks(){
+ localStorage.setItem("participants",JSON.stringify(participants));
+ renderRanks();
+}
+function renderRanks(){
+ participants.sort((a,b)=>b.score-a.score);
+ let html="";
+ participants.forEach((p,i)=>{
+  html+=`<div class='rank'>${i+1}위 ${p.name} - ${p.score}점</div>`;
+ });
+ document.getElementById("rankings").innerHTML=html;
+ let avg=participants.length?(participants.reduce((a,b)=>a+b.score,0)/participants.length).toFixed(1):0;
+ let perfect=participants.filter(p=>p.score===100).length;
+ document.getElementById("stats").innerHTML=`🎈 참여 친구 ${participants.length}명<br>⭐ 평균 ${avg}점<br>🏆 만점 ${perfect}명`;
+}
+renderRanks();
+
+function addQuestion(){
+ if(document.querySelectorAll('.q').length>=5){alert("최대 5문제");return;}
+ let d=document.createElement("div");
+ d.className="card q";
+ d.innerHTML=`
+ <select class="type" onchange="changeType(this)">
+ <option value="ox">OX</option>
+ <option value="choice">선택형</option>
+ <option value="short">주관식</option>
+ </select>
+ <input class="question" placeholder="문제">
+ <div class="extra"></div>`;
+ document.getElementById("questions").appendChild(d);
+ changeType(d.querySelector(".type"));
+}
+
+function changeType(sel){
+ let e=sel.parentNode.querySelector(".extra");
+ if(sel.value==="ox"){
+  e.innerHTML=`<select class='answer'><option>O</option><option>X</option></select>`;
+ }else if(sel.value==="choice"){
+  e.innerHTML=`
+  <input class='c1' placeholder='보기1'>
+  <input class='c2' placeholder='보기2'>
+  <input class='c3' placeholder='보기3'>
+  <input class='c4' placeholder='보기4'>
+  <input class='answer' placeholder='정답 보기 번호(1~4)'>
+  `;
+ }else{
+  e.innerHTML=`<input class='answer' placeholder='정답'>
+  <input class='hint' placeholder='힌트(선택)'>`;
+ }
+}
+
+function startQuiz(){
+ quiz=[];
+ let qs=document.querySelectorAll(".q");
+ if(qs.length<1){alert("문제를 만들어주세요");return;}
+ qs.forEach(q=>{
+  let t=q.querySelector(".type").value;
+  let obj={type:t,q:q.querySelector(".question").value};
+  if(t==="ox"){
+    obj.answer=q.querySelector(".answer").value;
+  }else if(t==="choice"){
+    obj.choices=[q.querySelector(".c1").value,q.querySelector(".c2").value,q.querySelector(".c3").value,q.querySelector(".c4").value].filter(x=>x);
+    obj.answer=q.querySelector(".answer").value;
+  }else{
+    obj.answer=q.querySelector(".answer").value;
+    obj.hint=q.querySelector(".hint").value;
+  }
+  quiz.push(obj);
+ });
+ showPlayer();
+}
+
+function showPlayer(){
+ document.getElementById("creator").style.display="none";
+ let p=document.getElementById("player");
+ let h="<h2>😊 퀴즈 풀기</h2><input id='playerName' placeholder='이름'>";
+ quiz.forEach((q,i)=>{
+   h+=`<div class='card'><b>${i+1}. ${q.q}</b><br>`;
+   if(q.type==="ox"){
+      h+=`<label><input type='radio' name='q${i}' value='O'> O</label>
+      <label><input type='radio' name='q${i}' value='X'> X</label>`;
+   }else if(q.type==="choice"){
+      q.choices.forEach((c,idx)=>{
+        h+=`<div><label><input type='radio' name='q${i}' value='${idx+1}'> ${c}</label></div>`;
+      });
+   }else{
+      h+=`<input id='q${i}'>`;
+   }
+   h+="</div>";
+ });
+ h+="<button onclick='gradeQuiz()'>채점하기</button>";
+ p.innerHTML=h;
+ p.style.display="block";
+}
+
+function gradeQuiz(){
+ let score=0, feedback="";
+ let per=100/quiz.length;
+ quiz.forEach((q,i)=>{
+   let ans;
+   if(q.type==="short") ans=document.getElementById("q"+i).value.trim().toLowerCase();
+   else {
+     let r=document.querySelector(`input[name=q${i}]:checked`);
+     ans=r?r.value:"";
+   }
+
+   let correct=(q.type==="short")
+     ? ans===q.answer.trim().toLowerCase()
+     : ans==q.answer;
+
+   if(correct){
+      score+=per;
+      feedback+=`✅ ${i+1}번 정답<br>`;
+   }else if(q.type!=="ox"){
+      let retry=prompt(`문제 ${i+1} 다시 도전!\n힌트:${q.hint||"없음"}`);
+      let second=(retry||"").trim().toLowerCase();
+      let ok=(q.type==="short")
+         ? second===q.answer.trim().toLowerCase()
+         : second==q.answer;
+      if(ok){
+        score+=per*0.5;
+        feedback+=`🌟 ${i+1}번 2차 정답<br>`;
+      }else{
+        feedback+=`❌ ${i+1}번 오답 (정답:${q.answer})<br>`;
+      }
+   }else{
+      feedback+=`❌ ${i+1}번 오답 (정답:${q.answer})<br>`;
+   }
+ });
+
+ score=Math.round(score);
+ let name=document.getElementById("playerName").value||"익명";
+ participants.push({name,score});
+ saveRanks();
+
+ document.getElementById("player").style.display="none";
+ document.getElementById("result").style.display="block";
+ document.getElementById("result").innerHTML=`<h2>🎉 결과</h2><b>${name}</b><br>${score}점<br><br>${feedback}<button onclick='location.reload()'>새로 시작</button>`;
+}
+</script>
+</body>
+</html>
